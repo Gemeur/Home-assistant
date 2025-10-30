@@ -1,6 +1,6 @@
 blueprint:
-  name: "IKEA Styrbar Control: Refined Dimming, Temp & 9-Color Cycle (V3 - Fixed On/Off)"
-  description: "Advanced control for IKEA Styrbar (Zigbee2MQTT). Features min/max brightness limiting, smooth continuous dimming/temp control, and a graphical 9-color cycle for multiple entities. **Uses a dedicated helper for reliable brightness memory.**"
+  name: "IKEA Styrbar Control: Refined Dimming, Temp & 9-Color Cycle"
+  description: "Advanced control for IKEA Styrbar (Zigbee2MQTT). Features min/max brightness limiting, smooth continuous dimming/temp control, and a graphical 9-color cycle for multiple entities."
   domain: automation
   source_url: https://github.com/Gemeur/Home-assistant/blob/main/automation/ikea_styrbar_control.yaml
 
@@ -26,16 +26,6 @@ blueprint:
                 - light
                 - switch
           multiple: true
-
-    brightness_memory_helper:
-      name: Brightness Memory Helper (input_number)
-      description: Choose the Input Number Helper to store the *last known brightness* (for 'ON' button).
-      selector:
-        entity:
-          multiple: false
-          filter:
-            - domain:
-                - input_number
 
     color_cycle_index:
       name: Color Cycle Index Helper (input_number)
@@ -66,10 +56,10 @@ blueprint:
     min_brightness_pct:
       name: Minimum Brightness (%)
       description: The minimum brightness level (in percent) when dimming down.
-      default: 0
+      default: 1
       selector:
         number:
-          min: 0
+          min: 1
           max: 100
           step: 1
           mode: slider
@@ -111,7 +101,7 @@ blueprint:
     color_0:
       name: Color 0 (Default White)
       description: The first color in the cycle (Index 0). Best for a default White/Temp.
-      default:  
+      default: 
         - 255
         - 255
         - 255 # #ffffff
@@ -120,7 +110,7 @@ blueprint:
     color_1:
       name: Color 1
       description: The second color in the cycle.
-      default:  
+      default: 
         - 255
         - 255
         - 0 # #ffff00
@@ -129,7 +119,7 @@ blueprint:
     color_2:
       name: Color 2
       description: The third color in the cycle.
-      default:  
+      default: 
         - 255
         - 165
         - 0 # #ffa500
@@ -138,7 +128,7 @@ blueprint:
     color_3:
       name: Color 3
       description: The fourth color in the cycle.
-      default:  
+      default: 
         - 255
         - 0
         - 0 # #ff0000
@@ -147,7 +137,7 @@ blueprint:
     color_4:
       name: Color 4
       description: The fifth color in the cycle.
-      default:  
+      default: 
         - 255
         - 0
         - 123 # #ff007b
@@ -156,7 +146,7 @@ blueprint:
     color_5:
       name: Color 5
       description: The sixth color in the cycle.
-      default:  
+      default: 
         - 153
         - 0
         - 255 # #9900ff
@@ -165,7 +155,7 @@ blueprint:
     color_6:
       name: Color 6
       description: The seventh color in the cycle.
-      default:  
+      default: 
         - 0
         - 30
         - 255 # #001eff
@@ -174,7 +164,7 @@ blueprint:
     color_7:
       name: Color 7
       description: The eighth color in the cycle.
-      default:  
+      default: 
         - 0
         - 85
         - 128 # #005580
@@ -183,7 +173,7 @@ blueprint:
     color_8:
       name: Color 8
       description: The ninth color in the cycle.
-      default:  
+      default: 
         - 0
         - 255
         - 42 # #00ff2a
@@ -321,8 +311,6 @@ action:
       min_brightness_pct: !input min_brightness_pct
       max_brightness_pct: !input max_brightness_pct
       
-      brightness_memory_helper: !input brightness_memory_helper # New variable for the helper
-      
       # Temperature
       color_temp_delay: !input color_temp_delay_input
       color_temp_step_kelvin: !input color_temp_step_kelvin_input
@@ -344,7 +332,7 @@ action:
       color_index_helper: !input color_cycle_index
 
   - choose:
-      # --- On (ON: Using Brightness Memory Helper) ---
+      # --- On/Off ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'on' }}"
@@ -357,29 +345,16 @@ action:
                 target:
                   entity_id: "{{ lights }}"
                 data:
-                  # Use the stored brightness, default to max_brightness_pct if helper is 0 or empty.
-                  brightness_pct: "{{ states(brightness_memory_helper) | int(max_brightness_pct) }}" 
+                  brightness_pct: "{{ max_brightness_pct }}"
             else:
               - service: switch.turn_on
                 target:
                   entity_id: "{{ switches }}"
 
-      # --- Off (OFF: Saving Brightness before turning off) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'off' }}"
         sequence:
-          # Step 1: Save current brightness if the light is ON and brightness is > 0
-          - if:
-              - condition: template
-                value_template: "{{ lights | count > 0 and is_state(lights[0], 'on') and (state_attr(lights[0], 'brightness') | default(0) | float(0)) / 2.55 > 0 }}"
-            then:
-              - service: input_number.set_value
-                data:
-                  value: "{{ ((state_attr(lights[0], 'brightness') | float(0)) / 2.55) | round(0) | int }}"
-                target:
-                  entity_id: "{{ brightness_memory_helper }}"
-          # Step 2: Turn off the light (unconditional)
           - if:
               - condition: template
                 value_template: "{{ lights | count > 0 }}"
@@ -392,7 +367,7 @@ action:
                 target:
                   entity_id: "{{ switches }}"
 
-      # --- Hold for Brightness UP ---
+      # --- Hold for Brightness UP (FIXED) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_up' }}"
@@ -420,14 +395,8 @@ action:
                     brightness_pct: "{{ new_pct | int }}"
                 - delay:
                     milliseconds: "{{ repeat_delay }}"
-          # Save brightness after dimming up stops
-          - service: input_number.set_value
-            data:
-              value: "{{ ((state_attr(lights[0], 'brightness') | float(0)) / 2.55) | round(0) | int }}"
-            target:
-              entity_id: "{{ brightness_memory_helper }}"
 
-      # --- Hold for Brightness DOWN ---
+      # --- Hold for Brightness DOWN (FIXED) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_down' }}"
@@ -455,18 +424,6 @@ action:
                     brightness_pct: "{{ new_pct | int }}"
                 - delay:
                     milliseconds: "{{ repeat_delay }}"
-          # Save brightness after dimming down stops, only if light is still on (> min_brightness_pct)
-          - if:
-              - condition: template
-                value_template: >
-                  {% set cur_pct = (state_attr(lights[0], 'brightness') | default(255) | float(255)) / 2.55 %}
-                  {{ cur_pct > min_brightness_pct }}
-            then:
-              - service: input_number.set_value
-                data:
-                  value: "{{ ((state_attr(lights[0], 'brightness') | float(0)) / 2.55) | round(0) | int }}"
-                target:
-                  entity_id: "{{ brightness_memory_helper }}"
 
       - conditions:
           - condition: template
@@ -483,7 +440,7 @@ action:
               # OPTIMIZATION: Dynamic cycle based on list length
               new_index: >
                 {% if current_index >= (color_list_len - 1) %}
-                  {{ 0 }}  
+                  {{ 0 }} 
                 {% else %}
                   {{ current_index + 1 }}
                 {% endif %}
@@ -514,7 +471,7 @@ action:
               # OPTIMIZATION: Dynamic cycle based on list length
               new_index: >
                 {% if current_index == 0 %}
-                  {{ color_list_len - 1 }}  
+                  {{ color_list_len - 1 }} 
                 {% else %}
                   {{ current_index - 1 }}
                 {% endif %}
