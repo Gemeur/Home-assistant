@@ -27,16 +27,16 @@ blueprint:
                 - switch
           multiple: true
 
-    brightness_memory_helper:
-      name: Brightness/Color Index Helper (input_number)
-      description: Choose the Input Number Helper to store the *last known brightness* (for 'ON' button) AND the color cycle index.
+    color_cycle_index:
+      name: Color Cycle Index Helper (input_number)
+      description: Choose the Input Number Helper to store the color cycle index (0..N)
       selector:
         entity:
           multiple: false
           filter:
             - domain:
                 - input_number
-    
+
     # --- Hold Actions (Restored) ---
     arrow_left_hold:
       name: Left Arrow Hold (Action on release)
@@ -55,7 +55,7 @@ blueprint:
     # --- Color & Brightness Limits ---
     min_brightness_pct:
       name: Minimum Brightness (%)
-      description: The minimum brightness level (in percent) when dimming down. Set to 0 to turn the light OFF.
+      description: The minimum brightness level (in percent) when dimming down.
       default: 0
       selector:
         number:
@@ -97,14 +97,14 @@ blueprint:
           step: 100
           mode: slider
 
-    # --- Color Cycle List (Graphical Selectors) ---
+    # --- Color Cycle List (Graphical Selectors, Renamed & Default Colors Updated) ---
     color_0:
       name: Color 0 (Default White)
       description: The first color in the cycle (Index 0). Best for a default White/Temp.
       default: 
         - 255
         - 255
-        - 255
+        - 255 # #ffffff
       selector:
         color_rgb:
     color_1:
@@ -113,7 +113,7 @@ blueprint:
       default: 
         - 255
         - 255
-        - 0
+        - 0 # #ffff00
       selector:
         color_rgb:
     color_2:
@@ -122,7 +122,7 @@ blueprint:
       default: 
         - 255
         - 165
-        - 0
+        - 0 # #ffa500
       selector:
         color_rgb:
     color_3:
@@ -131,7 +131,7 @@ blueprint:
       default: 
         - 255
         - 0
-        - 0
+        - 0 # #ff0000
       selector:
         color_rgb:
     color_4:
@@ -140,7 +140,7 @@ blueprint:
       default: 
         - 255
         - 0
-        - 123
+        - 123 # #ff007b
       selector:
         color_rgb:
     color_5:
@@ -149,7 +149,7 @@ blueprint:
       default: 
         - 153
         - 0
-        - 255
+        - 255 # #9900ff
       selector:
         color_rgb:
     color_6:
@@ -158,7 +158,7 @@ blueprint:
       default: 
         - 0
         - 30
-        - 255
+        - 255 # #001eff
       selector:
         color_rgb:
     color_7:
@@ -167,7 +167,7 @@ blueprint:
       default: 
         - 0
         - 85
-        - 128
+        - 128 # #005580
       selector:
         color_rgb:
     color_8:
@@ -176,7 +176,7 @@ blueprint:
       default: 
         - 0
         - 255
-        - 42
+        - 42 # #00ff2a
       selector:
         color_rgb:
           
@@ -311,8 +311,6 @@ action:
       min_brightness_pct: !input min_brightness_pct
       max_brightness_pct: !input max_brightness_pct
       
-      brightness_memory_helper: !input brightness_memory_helper
-      
       # Temperature
       color_temp_delay: !input color_temp_delay_input
       color_temp_step_kelvin: !input color_temp_step_kelvin_input
@@ -331,9 +329,10 @@ action:
         - rgb_color: !input color_7
         - rgb_color: !input color_8
       color_list_len: "{{ color_list | count }}"
+      color_index_helper: !input color_cycle_index
 
   - choose:
-      # --- On (ВКЛЮЧЕНИЕ: на запомненной яркости) ---
+      # --- On/Off ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'on' }}"
@@ -346,29 +345,16 @@ action:
                 target:
                   entity_id: "{{ lights }}"
                 data:
-                  # Включаем на запомненной яркости. Если хелпер пустой, ставим Max
-                  brightness_pct: "{{ states(brightness_memory_helper) | int(max_brightness_pct) }}" 
+                  brightness_pct: "{{ max_brightness_pct }}"
             else:
               - service: switch.turn_on
                 target:
                   entity_id: "{{ switches }}"
 
-      # --- Off (ВЫКЛЮЧЕНИЕ: сначала сохраняем, потом выключаем) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'off' }}"
         sequence:
-          # Шаг 1: Сохраняем текущую яркость, если свет был включен и не на нуле
-          - if:
-              - condition: template
-                value_template: "{{ lights | count > 0 and is_state(lights[0], 'on') and (state_attr(lights[0], 'brightness') | default(0) | float(0)) / 2.55 > 0 }}"
-            then:
-              - service: input_number.set_value
-                data:
-                  value: "{{ ((state_attr(lights[0], 'brightness') | float(0)) / 2.55) | round(0) | int }}"
-                target:
-                  entity_id: "{{ brightness_memory_helper }}"
-          # Шаг 2: Выключаем свет (происходит всегда)
           - if:
               - condition: template
                 value_template: "{{ lights | count > 0 }}"
@@ -381,7 +367,7 @@ action:
                 target:
                   entity_id: "{{ switches }}"
 
-      # --- Hold for Brightness UP (Сохранение яркости) ---
+      # --- Hold for Brightness UP (FIXED) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_up' }}"
@@ -409,14 +395,8 @@ action:
                     brightness_pct: "{{ new_pct | int }}"
                 - delay:
                     milliseconds: "{{ repeat_delay }}"
-          # СОХРАНЕНИЕ: Сохраняем яркость после остановки
-          - service: input_number.set_value
-            data:
-              value: "{{ ((state_attr(lights[0], 'brightness') | float(0)) / 2.55) | round(0) | int }}"
-            target:
-              entity_id: "{{ brightness_memory_helper }}"
 
-      # --- Hold for Brightness DOWN (НАДЕЖНЫЙ БЛОК) ---
+      # --- Hold for Brightness DOWN (FIXED) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_down' }}"
@@ -427,7 +407,7 @@ action:
                   id: brightness_stop
                 - condition: template
                   value_template: >
-                    {% set cur_pct = (state_attr(lights[0], 'brightness') | default((max_brightness_pct * 2.55) | int(255)) | float(255)) / 2.55 %}
+                    {% set cur_pct = (state_attr(lights[0], 'brightness') | default(255) | float(255)) / 2.55 %}
                     {{ cur_pct <= min_brightness_pct }}
               sequence:
                 - variables:
@@ -444,27 +424,6 @@ action:
                     brightness_pct: "{{ new_pct | int }}"
                 - delay:
                     milliseconds: "{{ repeat_delay }}"
-          # ЛОГИКА ПОСЛЕ ОСТАНОВКИ (надежный IF/THEN/ELSE)
-          - if:
-              - condition: template
-                value_template: >
-                  {% set cur_pct = (state_attr(lights[0], 'brightness') | default((max_brightness_pct * 2.55) | int(255)) | float(255)) / 2.55 %}
-                  {{ cur_pct <= min_brightness_pct }}
-            then:
-              # Если дошли до минимума, устанавливаем его. Если min_brightness_pct = 0, свет выключится.
-              - service: light.turn_on
-                target:
-                  entity_id: "{{ lights }}"
-                data:
-                  brightness_pct: "{{ min_brightness_pct | int(0) }}"
-            else:
-              # Если прервано кнопкой stop, сохраняем текущую яркость
-              - service: input_number.set_value
-                data:
-                  value: "{{ ((state_attr(lights[0], 'brightness') | float(0)) / 2.55) | round(0) | int }}"
-                target:
-                  entity_id: "{{ brightness_memory_helper }}"
-
 
       - conditions:
           - condition: template
@@ -477,7 +436,8 @@ action:
             value_template: "{{ trigger.id == 'arrow_right_click' }}"
         sequence:
           - variables:
-              current_index: "{{ states(brightness_memory_helper) | int(0) }}"
+              current_index: "{{ states(color_index_helper) | int(0) }}"
+              # OPTIMIZATION: Dynamic cycle based on list length
               new_index: >
                 {% if current_index >= (color_list_len - 1) %}
                   {{ 0 }} 
@@ -488,13 +448,14 @@ action:
             data:
               value: "{{ new_index }}"
             target:
-              entity_id: "{{ brightness_memory_helper }}"
+              entity_id: "{{ color_index_helper }}"
           - service: light.turn_on
             target:
               entity_id: "{{ lights }}"
             data: >
               {% set color_data = color_list[new_index] %}
               {% set light_data = {} %}
+              {# We only support rgb_color now, since we use the color_rgb selector #}
               {% if color_data.rgb_color is defined %}
                 {% set light_data = light_data | combine({'rgb_color': color_data.rgb_color}) %}
               {% endif %}
@@ -506,7 +467,8 @@ action:
             value_template: "{{ trigger.id == 'arrow_left_click' }}"
         sequence:
           - variables:
-              current_index: "{{ states(brightness_memory_helper) | int(0) }}"
+              current_index: "{{ states(color_index_helper) | int(0) }}"
+              # OPTIMIZATION: Dynamic cycle based on list length
               new_index: >
                 {% if current_index == 0 %}
                   {{ color_list_len - 1 }} 
@@ -517,13 +479,14 @@ action:
             data:
               value: "{{ new_index }}"
             target:
-              entity_id: "{{ brightness_memory_helper }}"
+              entity_id: "{{ color_index_helper }}"
           - service: light.turn_on
             target:
               entity_id: "{{ lights }}"
             data: >
               {% set color_data = color_list[new_index] %}
               {% set light_data = {} %}
+              {# We only support rgb_color now, since we use the color_rgb selector #}
               {% if color_data.rgb_color is defined %}
                 {% set light_data = light_data | combine({'rgb_color': color_data.rgb_color}) %}
               {% endif %}
@@ -548,6 +511,7 @@ action:
               until:
                 - condition: trigger
                   id: arrow_left_release
+                # OPTIMIZATION: Stop if max (coolest) temp is reached
                 - condition: template
                   value_template: >
                     {% set cur_temp = state_attr(lights[0], 'color_temp_kelvin') | int(color_temp_min_kelvin) %}
@@ -586,6 +550,7 @@ action:
               until:
                 - condition: trigger
                   id: arrow_right_release
+                # OPTIMIZATION: Stop if min (warmest) temp is reached
                 - condition: template
                   value_template: >
                     {% set cur_temp = state_attr(lights[0], 'color_temp_kelvin') | int(color_temp_max_kelvin) %}
