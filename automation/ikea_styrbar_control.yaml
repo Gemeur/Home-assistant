@@ -27,7 +27,6 @@ blueprint:
                 - switch
           multiple: true
 
-    # ИЗМЕНЕНО: Название хелпера изменено для поддержки "Последней Яркости" (чтобы запоминать яркость, как ты хотел)
     brightness_memory_helper:
       name: Brightness/Color Index Helper (input_number)
       description: Choose the Input Number Helper to store the *last known brightness* (for 'ON' button) AND the color cycle index.
@@ -334,7 +333,7 @@ action:
       color_list_len: "{{ color_list | count }}"
 
   - choose:
-      # --- On/Off ---
+      # --- On (ВКЛЮЧЕНИЕ: на запомненной яркости) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'on' }}"
@@ -347,18 +346,19 @@ action:
                 target:
                   entity_id: "{{ lights }}"
                 data:
-                  # ИЗМЕНЕНО: Используем запомненную яркость или max, если хелпер пустой
+                  # Включаем на запомненной яркости. Если хелпер пустой, ставим Max
                   brightness_pct: "{{ states(brightness_memory_helper) | int(max_brightness_pct) }}" 
             else:
               - service: switch.turn_on
                 target:
                   entity_id: "{{ switches }}"
 
+      # --- Off (ВЫКЛЮЧЕНИЕ: сначала сохраняем, потом выключаем) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'off' }}"
         sequence:
-          # ИЗМЕНЕНО: Сохраняем яркость при выключении
+          # Шаг 1: Сохраняем текущую яркость, если свет был включен и не на нуле
           - if:
               - condition: template
                 value_template: "{{ lights | count > 0 and is_state(lights[0], 'on') and (state_attr(lights[0], 'brightness') | default(0) | float(0)) / 2.55 > 0 }}"
@@ -368,6 +368,7 @@ action:
                   value: "{{ ((state_attr(lights[0], 'brightness') | float(0)) / 2.55) | round(0) | int }}"
                 target:
                   entity_id: "{{ brightness_memory_helper }}"
+          # Шаг 2: Выключаем свет (происходит всегда)
           - if:
               - condition: template
                 value_template: "{{ lights | count > 0 }}"
@@ -380,7 +381,7 @@ action:
                 target:
                   entity_id: "{{ switches }}"
 
-      # --- Hold for Brightness UP (Сохранение яркости добавлено) ---
+      # --- Hold for Brightness UP (Сохранение яркости) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_up' }}"
@@ -415,7 +416,7 @@ action:
             target:
               entity_id: "{{ brightness_memory_helper }}"
 
-      # --- Hold for Brightness DOWN (ИСПРАВЛЕННЫЙ И НАДЕЖНЫЙ БЛОК) ---
+      # --- Hold for Brightness DOWN (НАДЕЖНЫЙ БЛОК) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_down' }}"
@@ -450,8 +451,7 @@ action:
                   {% set cur_pct = (state_attr(lights[0], 'brightness') | default((max_brightness_pct * 2.55) | int(255)) | float(255)) / 2.55 %}
                   {{ cur_pct <= min_brightness_pct }}
             then:
-              # Если дошли до минимума, то сохранять нечего, яркость уже минимальная. 
-              # Если min_brightness_pct = 0, свет выключится по завершению цикла.
+              # Если дошли до минимума, устанавливаем его. Если min_brightness_pct = 0, свет выключится.
               - service: light.turn_on
                 target:
                   entity_id: "{{ lights }}"
@@ -477,7 +477,6 @@ action:
             value_template: "{{ trigger.id == 'arrow_right_click' }}"
         sequence:
           - variables:
-              # ИСПОЛЬЗУЕМ: brightness_memory_helper для индекса
               current_index: "{{ states(brightness_memory_helper) | int(0) }}"
               new_index: >
                 {% if current_index >= (color_list_len - 1) %}
@@ -507,7 +506,6 @@ action:
             value_template: "{{ trigger.id == 'arrow_left_click' }}"
         sequence:
           - variables:
-              # ИСПОЛЬЗУЕМ: brightness_memory_helper для индекса
               current_index: "{{ states(brightness_memory_helper) | int(0) }}"
               new_index: >
                 {% if current_index == 0 %}
