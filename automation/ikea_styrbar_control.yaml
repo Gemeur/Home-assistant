@@ -1,6 +1,6 @@
 blueprint:
-  name: "IKEA Styrbar Control: Refined Dimming, Temp & 9-Color Cycle"
-  description: "Advanced control for IKEA Styrbar (Zigbee2MQTT). Features min/max brightness limiting, smooth continuous dimming/temp control, and a graphical 9-color cycle for multiple entities."
+  name: "IKEA Styrbar Control: Refined Dimming, Temp & 9-Color Cycle (V3 - Fixed On/Off)"
+  description: "Advanced control for IKEA Styrbar (Zigbee2MQTT). Features min/max brightness limiting, smooth continuous dimming/temp control, and a graphical 9-color cycle for multiple entities. **Uses a dedicated helper for reliable brightness memory.**"
   domain: automation
   source_url: https://github.com/Gemeur/Home-assistant/blob/main/automation/ikea_styrbar_control.yaml
 
@@ -26,6 +26,16 @@ blueprint:
                 - light
                 - switch
           multiple: true
+
+    brightness_memory_helper:
+      name: Brightness Memory Helper (input_number)
+      description: Choose the Input Number Helper to store the *last known brightness* (for 'ON' button).
+      selector:
+        entity:
+          multiple: false
+          filter:
+            - domain:
+                - input_number
 
     color_cycle_index:
       name: Color Cycle Index Helper (input_number)
@@ -311,6 +321,8 @@ action:
       min_brightness_pct: !input min_brightness_pct
       max_brightness_pct: !input max_brightness_pct
       
+      brightness_memory_helper: !input brightness_memory_helper # New variable for the helper
+      
       # Temperature
       color_temp_delay: !input color_temp_delay_input
       color_temp_step_kelvin: !input color_temp_step_kelvin_input
@@ -332,7 +344,7 @@ action:
       color_index_helper: !input color_cycle_index
 
   - choose:
-      # --- On/Off ---
+      # --- On (ON: Using Brightness Memory Helper) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'on' }}"
@@ -341,25 +353,37 @@ action:
               - condition: template
                 value_template: "{{ lights | count > 0 }}"
             then:
-              # Simply turn on the light. The light entity should restore its last state if supported.
               - service: light.turn_on
                 target:
                   entity_id: "{{ lights }}"
-                data: {} # Empty data removes the explicit brightness_pct setting
+                data:
+                  # Use the stored brightness, default to max_brightness_pct if helper is 0 or empty.
+                  brightness_pct: "{{ states(brightness_memory_helper) | int(max_brightness_pct) }}" 
             else:
               - service: switch.turn_on
                 target:
                   entity_id: "{{ switches }}"
 
+      # --- Off (OFF: Saving Brightness before turning off) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'off' }}"
         sequence:
+          # Step 1: Save current brightness if the light is ON and brightness is > 0
+          - if:
+              - condition: template
+                value_template: "{{ lights | count > 0 and is_state(lights[0], 'on') and (state_attr(lights[0], 'brightness') | default(0) | float(0)) / 2.55 > 0 }}"
+            then:
+              - service: input_number.set_value
+                data:
+                  value: "{{ ((state_attr(lights[0], 'brightness') | float(0)) / 2.55) | round(0) | int }}"
+                target:
+                  entity_id: "{{ brightness_memory_helper }}"
+          # Step 2: Turn off the light (unconditional)
           - if:
               - condition: template
                 value_template: "{{ lights | count > 0 }}"
             then:
-              # Unconditionally turn off the light
               - service: light.turn_off
                 target:
                   entity_id: "{{ lights }}"
@@ -368,7 +392,7 @@ action:
                 target:
                   entity_id: "{{ switches }}"
 
-      # --- Hold for Brightness UP (FIXED) ---
+      # --- Hold for Brightness UP ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_up' }}"
@@ -396,8 +420,14 @@ action:
                     brightness_pct: "{{ new_pct | int }}"
                 - delay:
                     milliseconds: "{{ repeat_delay }}"
+          # Save brightness after dimming up stops
+          - service: input_number.set_value
+            data:
+              value: "{{ ((state_attr(lights[0], 'brightness') | float(0)) / 2.55) | round(0) | int }}"
+            target:
+              entity_id: "{{ brightness_memory_helper }}"
 
-      # --- Hold for Brightness DOWN (FIXED) ---
+      # --- Hold for Brightness DOWN ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_down' }}"
@@ -425,6 +455,18 @@ action:
                     brightness_pct: "{{ new_pct | int }}"
                 - delay:
                     milliseconds: "{{ repeat_delay }}"
+          # Save brightness after dimming down stops, only if light is still on (> min_brightness_pct)
+          - if:
+              - condition: template
+                value_template: >
+                  {% set cur_pct = (state_attr(lights[0], 'brightness') | default(255) | float(255)) / 2.55 %}
+                  {{ cur_pct > min_brightness_pct }}
+            then:
+              - service: input_number.set_value
+                data:
+                  value: "{{ ((state_attr(lights[0], 'brightness') | float(0)) / 2.55) | round(0) | int }}"
+                target:
+                  entity_id: "{{ brightness_memory_helper }}"
 
       - conditions:
           - condition: template
