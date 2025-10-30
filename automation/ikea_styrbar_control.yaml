@@ -52,11 +52,11 @@ blueprint:
       selector:
         action: {}
 
-    # --- Color & Brightness Limits ---
+    # --- Color & Brightness Limits (min_brightness_pct DEFAULT changed to 1) ---
     min_brightness_pct:
       name: Minimum Brightness (%)
-      description: The minimum brightness level (in percent) when dimming down.
-      default: 0
+      description: The minimum brightness level (in percent) when dimming down. Set to 1 to prevent lights from turning OFF.
+      default: 1
       selector:
         number:
           min: 0
@@ -269,7 +269,7 @@ trigger:
     device_id: !input switch_remote
     domain: mqtt
     type: action
-    subtype: arrow_left_hold
+    subtype: arrow_left_click
   - id: arrow_left_release
     platform: device
     device_id: !input switch_remote
@@ -367,7 +367,7 @@ action:
                 target:
                   entity_id: "{{ switches }}"
 
-      # --- Hold for Brightness UP (FIXED) ---
+      # --- Hold for Brightness UP ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_up' }}"
@@ -396,7 +396,7 @@ action:
                 - delay:
                     milliseconds: "{{ repeat_delay }}"
 
-      # --- Hold for Brightness DOWN (FIXED) ---
+      # --- Hold for Brightness DOWN (FIXED: Better stop condition and min value handling) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_down' }}"
@@ -406,6 +406,7 @@ action:
                 - condition: trigger
                   id: brightness_stop
                 - condition: template
+                  # Останавливаем, если текущая яркость (в процентах) уже достигла или опустилась ниже минимальной
                   value_template: >
                     {% set cur_pct = (state_attr(lights[0], 'brightness') | default(255) | float(255)) / 2.55 %}
                     {{ cur_pct <= min_brightness_pct }}
@@ -414,6 +415,7 @@ action:
                     current_pct: >
                       {% set cur_br = state_attr(lights[0], 'brightness') | default((max_brightness_pct * 2.55) | int(255)) | float(255) %}
                       {{ (cur_br / 2.55) | round(0) }}
+                    # Рассчитываем новое значение, но гарантируем, что оно не опустится ниже min_brightness_pct
                     new_pct: >
                       {% set val = current_pct - brightness_step_pct %}
                       {{ [val, min_brightness_pct] | max }}
