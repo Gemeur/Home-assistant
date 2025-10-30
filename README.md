@@ -23,8 +23,10 @@ It is based on an original concept by <a href="https://github.com/jtosic" target
 
 ## 💾 Installation
 
-1.  In Home Assistant, go to **Settings** → **Automations & Scenes** → **Blueprints**.
-2.  Click **"Import Blueprint"** and paste the URL of the .yaml file
+1.  In Home Assistant, go to **Settings** → **Automations & Scenes** → **Blueprints**
+
+2.  Click **"Import Blueprint"** and paste the URL of the .yaml file: https://github.com/Gemeur/Home-assistant/blob/main/automation/ikea_styrbar_control.yaml
+
 3.  Create a new Automation using this Blueprint.
 
 ## ⚙️ Blueprint Configuration
