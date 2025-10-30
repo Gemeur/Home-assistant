@@ -429,6 +429,8 @@ action:
                     brightness_pct: "{{ new_pct | int }}"
                 - delay:
                     milliseconds: "{{ repeat_delay }}"
+          # Вот здесь был конфликт. Блок 'choose' сам по себе является действием,
+          # но он должен быть единственным элементом в списке 'sequence'.
           - choose:
               - conditions:
                   - condition: template
