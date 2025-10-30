@@ -1,10 +1,11 @@
 blueprint:
   name: "IKEA Styrbar Control: Refined Dimming, Temp & 9-Color Cycle"
-  description: "Advanced control for IKEA Styrbar (Zigbee2MQTT). Features min/max brightness limiting, smooth continuous dimming/temp control, and a graphical 9-color cycle for multiple entities. Now supports **Last Brightness**."
+  description: "Advanced control for IKEA Styrbar (Zigbee2MQTT). Features min/max brightness limiting, smooth continuous dimming/temp control, and a graphical 9-color cycle for multiple entities."
   domain: automation
   source_url: https://github.com/Gemeur/Home-assistant/blob/main/automation/ikea_styrbar_control.yaml
 
   input:
+    # --- Core Devices & Helpers ---
     switch_remote:
       name: Styrbar Switch Remote
       description: Choose IKEA Styrbar switch remote device
@@ -26,9 +27,10 @@ blueprint:
                 - switch
           multiple: true
 
+    # ИЗМЕНЕНО: Название хелпера изменено для поддержки "Последней Яркости" (чтобы запоминать яркость, как ты хотел)
     brightness_memory_helper:
-      name: Brightness Memory Helper (input_number)
-      description: Choose the Input Number Helper to store the *last known brightness* (for 'ON' button) and color index.
+      name: Brightness/Color Index Helper (input_number)
+      description: Choose the Input Number Helper to store the *last known brightness* (for 'ON' button) AND the color cycle index.
       selector:
         entity:
           multiple: false
@@ -36,6 +38,7 @@ blueprint:
             - domain:
                 - input_number
     
+    # --- Hold Actions (Restored) ---
     arrow_left_hold:
       name: Left Arrow Hold (Action on release)
       description: Action to execute when the Left button is released after a hold.
@@ -50,6 +53,7 @@ blueprint:
       selector:
         action: {}
 
+    # --- Color & Brightness Limits ---
     min_brightness_pct:
       name: Minimum Brightness (%)
       description: The minimum brightness level (in percent) when dimming down. Set to 0 to turn the light OFF.
@@ -94,6 +98,7 @@ blueprint:
           step: 100
           mode: slider
 
+    # --- Color Cycle List (Graphical Selectors) ---
     color_0:
       name: Color 0 (Default White)
       description: The first color in the cycle (Index 0). Best for a default White/Temp.
@@ -176,6 +181,7 @@ blueprint:
       selector:
         color_rgb:
           
+    # --- Timing & Step Settings (Updated Defaults) ---
     repeat_delay:
       name: Delay for brightness step (ms)
       description: Delay between brightness change steps (e.g., 50-200ms recommended).
@@ -300,6 +306,7 @@ action:
         {{ expand(target_entities) |
           map(attribute='entity_id') | select('match', '^switch\\.') | list }}
           
+      # Brightness
       repeat_delay: !input repeat_delay
       brightness_step_pct: !input brightness_step_pct
       min_brightness_pct: !input min_brightness_pct
@@ -307,11 +314,13 @@ action:
       
       brightness_memory_helper: !input brightness_memory_helper
       
+      # Temperature
       color_temp_delay: !input color_temp_delay_input
       color_temp_step_kelvin: !input color_temp_step_kelvin_input
       color_temp_min_kelvin: !input min_color_temp_kelvin
       color_temp_max_kelvin: !input max_color_temp_kelvin
       
+      # Colors
       color_list:
         - rgb_color: !input color_0
         - rgb_color: !input color_1
@@ -325,6 +334,7 @@ action:
       color_list_len: "{{ color_list | count }}"
 
   - choose:
+      # --- On/Off ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'on' }}"
@@ -337,6 +347,7 @@ action:
                 target:
                   entity_id: "{{ lights }}"
                 data:
+                  # ИЗМЕНЕНО: Используем запомненную яркость или max, если хелпер пустой
                   brightness_pct: "{{ states(brightness_memory_helper) | int(max_brightness_pct) }}" 
             else:
               - service: switch.turn_on
@@ -347,9 +358,10 @@ action:
           - condition: template
             value_template: "{{ trigger.id == 'off' }}"
         sequence:
+          # ИЗМЕНЕНО: Сохраняем яркость при выключении
           - if:
               - condition: template
-                value_template: "{{ is_state(lights[0], 'on') and (state_attr(lights[0], 'brightness') | default(0) | float(0)) / 2.55 > 0 }}"
+                value_template: "{{ lights | count > 0 and is_state(lights[0], 'on') and (state_attr(lights[0], 'brightness') | default(0) | float(0)) / 2.55 > 0 }}"
             then:
               - service: input_number.set_value
                 data:
@@ -368,6 +380,7 @@ action:
                 target:
                   entity_id: "{{ switches }}"
 
+      # --- Hold for Brightness UP (Сохранение яркости добавлено) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_up' }}"
@@ -395,12 +408,14 @@ action:
                     brightness_pct: "{{ new_pct | int }}"
                 - delay:
                     milliseconds: "{{ repeat_delay }}"
+          # СОХРАНЕНИЕ: Сохраняем яркость после остановки
           - service: input_number.set_value
             data:
               value: "{{ ((state_attr(lights[0], 'brightness') | float(0)) / 2.55) | round(0) | int }}"
             target:
               entity_id: "{{ brightness_memory_helper }}"
 
+      # --- Hold for Brightness DOWN (ИСПРАВЛЕННЫЙ И НАДЕЖНЫЙ БЛОК) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_down' }}"
@@ -411,9 +426,8 @@ action:
                   id: brightness_stop
                 - condition: template
                   value_template: >
-                    {% set current_pct = (state_attr(lights[0], 'brightness') | default((max_brightness_pct * 2.55) | int(255)) | float(255)) / 2.55 | round(0) %}
-                    {% set predicted_pct = current_pct - brightness_step_pct %}
-                    {{ predicted_pct < 1 }}
+                    {% set cur_pct = (state_attr(lights[0], 'brightness') | default((max_brightness_pct * 2.55) | int(255)) | float(255)) / 2.55 %}
+                    {{ cur_pct <= min_brightness_pct }}
               sequence:
                 - variables:
                     current_pct: >
@@ -421,7 +435,7 @@ action:
                       {{ (cur_br / 2.55) | round(0) }}
                     new_pct: >
                       {% set val = current_pct - brightness_step_pct %}
-                      {{ [val, 1] | max }}
+                      {{ [val, min_brightness_pct] | max }}
                 - service: light.turn_on
                   target:
                     entity_id: "{{ lights }}"
@@ -429,28 +443,27 @@ action:
                     brightness_pct: "{{ new_pct | int }}"
                 - delay:
                     milliseconds: "{{ repeat_delay }}"
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: >
-                      {% set current_pct = (state_attr(lights[0], 'brightness') | default((max_brightness_pct * 2.55) | int(255)) | float(255)) / 2.55 | round(0) %}
-                      {% set predicted_pct = current_pct - brightness_step_pct %}
-                      {{ predicted_pct < 1 }}
-                then:
-                  - service: light.turn_on
-                    target:
-                      entity_id: "{{ lights }}"
-                    data:
-                      brightness_pct: "{{ min_brightness_pct | int(0) }}"
-              - conditions:
-                  - condition: trigger
-                    id: brightness_stop
-                then:
-                  - service: input_number.set_value
-                    data:
-                      value: "{{ ((state_attr(lights[0], 'brightness') | float(0)) / 2.55) | round(0) | int }}"
-                    target:
-                      entity_id: "{{ brightness_memory_helper }}"
+          # ЛОГИКА ПОСЛЕ ОСТАНОВКИ (надежный IF/THEN/ELSE)
+          - if:
+              - condition: template
+                value_template: >
+                  {% set cur_pct = (state_attr(lights[0], 'brightness') | default((max_brightness_pct * 2.55) | int(255)) | float(255)) / 2.55 %}
+                  {{ cur_pct <= min_brightness_pct }}
+            then:
+              # Если дошли до минимума, то сохранять нечего, яркость уже минимальная. 
+              # Если min_brightness_pct = 0, свет выключится по завершению цикла.
+              - service: light.turn_on
+                target:
+                  entity_id: "{{ lights }}"
+                data:
+                  brightness_pct: "{{ min_brightness_pct | int(0) }}"
+            else:
+              # Если прервано кнопкой stop, сохраняем текущую яркость
+              - service: input_number.set_value
+                data:
+                  value: "{{ ((state_attr(lights[0], 'brightness') | float(0)) / 2.55) | round(0) | int }}"
+                target:
+                  entity_id: "{{ brightness_memory_helper }}"
 
 
       - conditions:
@@ -458,11 +471,13 @@ action:
             value_template: "{{ trigger.id == 'brightness_stop' }}"
         sequence: []
 
+      # --- Short press → (Color Cycle +1) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'arrow_right_click' }}"
         sequence:
           - variables:
+              # ИСПОЛЬЗУЕМ: brightness_memory_helper для индекса
               current_index: "{{ states(brightness_memory_helper) | int(0) }}"
               new_index: >
                 {% if current_index >= (color_list_len - 1) %}
@@ -486,11 +501,13 @@ action:
               {% endif %}
               {{ light_data }}
 
+      # --- Short press ← (Color Cycle -1) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'arrow_left_click' }}"
         sequence:
           - variables:
+              # ИСПОЛЬЗУЕМ: brightness_memory_helper для индекса
               current_index: "{{ states(brightness_memory_helper) | int(0) }}"
               new_index: >
                 {% if current_index == 0 %}
@@ -514,6 +531,7 @@ action:
               {% endif %}
               {{ light_data }}
 
+      # --- Hold ← (Cooler / Increase Kelvin) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'arrow_left_hold' }}"
@@ -551,6 +569,7 @@ action:
                     milliseconds: "{{ color_temp_delay }}"
           - sequence: !input arrow_left_hold
 
+      # --- Hold → (Warmer / Decrease Kelvin) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'arrow_right_hold' }}"
