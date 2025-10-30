@@ -56,10 +56,10 @@ blueprint:
     min_brightness_pct:
       name: Minimum Brightness (%)
       description: The minimum brightness level (in percent) when dimming down.
-      default: 0
+      default: 1
       selector:
         number:
-          min: 0
+          min: 1
           max: 100
           step: 1
           mode: slider
