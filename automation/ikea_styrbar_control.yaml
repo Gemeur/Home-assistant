@@ -5,7 +5,6 @@ blueprint:
   source_url: https://github.com/Gemeur/Home-assistant/blob/main/automation/ikea_styrbar_control.yaml
 
   input:
-    # --- Core Devices & Helpers ---
     switch_remote:
       name: Styrbar Switch Remote
       description: Choose IKEA Styrbar switch remote device
@@ -37,7 +36,6 @@ blueprint:
             - domain:
                 - input_number
 
-    # --- Hold Actions (Restored) ---
     arrow_left_hold:
       name: Left Arrow Hold (Action on release)
       description: Action to execute when the Left button is released after a hold.
@@ -52,11 +50,10 @@ blueprint:
       selector:
         action: {}
 
-    # --- Color & Brightness Limits (min_brightness_pct DEFAULT changed to 1) ---
     min_brightness_pct:
       name: Minimum Brightness (%)
-      description: The minimum brightness level (in percent) when dimming down. Set to 1 to prevent lights from turning OFF.
-      default: 1
+      description: The minimum brightness level (in percent) when dimming down. Set to 0 to turn the light OFF.
+      default: 0
       selector:
         number:
           min: 0
@@ -97,14 +94,13 @@ blueprint:
           step: 100
           mode: slider
 
-    # --- Color Cycle List (Graphical Selectors, Renamed & Default Colors Updated) ---
     color_0:
       name: Color 0 (Default White)
       description: The first color in the cycle (Index 0). Best for a default White/Temp.
       default: 
         - 255
         - 255
-        - 255 # #ffffff
+        - 255
       selector:
         color_rgb:
     color_1:
@@ -113,7 +109,7 @@ blueprint:
       default: 
         - 255
         - 255
-        - 0 # #ffff00
+        - 0
       selector:
         color_rgb:
     color_2:
@@ -122,7 +118,7 @@ blueprint:
       default: 
         - 255
         - 165
-        - 0 # #ffa500
+        - 0
       selector:
         color_rgb:
     color_3:
@@ -131,7 +127,7 @@ blueprint:
       default: 
         - 255
         - 0
-        - 0 # #ff0000
+        - 0
       selector:
         color_rgb:
     color_4:
@@ -140,7 +136,7 @@ blueprint:
       default: 
         - 255
         - 0
-        - 123 # #ff007b
+        - 123
       selector:
         color_rgb:
     color_5:
@@ -149,7 +145,7 @@ blueprint:
       default: 
         - 153
         - 0
-        - 255 # #9900ff
+        - 255
       selector:
         color_rgb:
     color_6:
@@ -158,7 +154,7 @@ blueprint:
       default: 
         - 0
         - 30
-        - 255 # #001eff
+        - 255
       selector:
         color_rgb:
     color_7:
@@ -167,7 +163,7 @@ blueprint:
       default: 
         - 0
         - 85
-        - 128 # #005580
+        - 128
       selector:
         color_rgb:
     color_8:
@@ -176,11 +172,10 @@ blueprint:
       default: 
         - 0
         - 255
-        - 42 # #00ff2a
+        - 42
       selector:
         color_rgb:
           
-    # --- Timing & Step Settings (Updated Defaults) ---
     repeat_delay:
       name: Delay for brightness step (ms)
       description: Delay between brightness change steps (e.g., 50-200ms recommended).
@@ -269,7 +264,7 @@ trigger:
     device_id: !input switch_remote
     domain: mqtt
     type: action
-    subtype: arrow_left_click
+    subtype: arrow_left_hold
   - id: arrow_left_release
     platform: device
     device_id: !input switch_remote
@@ -332,7 +327,6 @@ action:
       color_index_helper: !input color_cycle_index
 
   - choose:
-      # --- On/Off ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'on' }}"
@@ -367,7 +361,6 @@ action:
                 target:
                   entity_id: "{{ switches }}"
 
-      # --- Hold for Brightness UP ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_up' }}"
@@ -396,7 +389,6 @@ action:
                 - delay:
                     milliseconds: "{{ repeat_delay }}"
 
-      # --- Hold for Brightness DOWN (FIXED: Better stop condition and min value handling) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'brightness_move_down' }}"
@@ -406,16 +398,15 @@ action:
                 - condition: trigger
                   id: brightness_stop
                 - condition: template
-                  # Останавливаем, если текущая яркость (в процентах) уже достигла или опустилась ниже минимальной
                   value_template: >
-                    {% set cur_pct = (state_attr(lights[0], 'brightness') | default(255) | float(255)) / 2.55 %}
-                    {{ cur_pct <= min_brightness_pct }}
+                    {% set current_pct = (state_attr(lights[0], 'brightness') | default((max_brightness_pct * 2.55) | int(255)) | float(255)) / 2.55 | round(0) %}
+                    {% set predicted_pct = current_pct - brightness_step_pct %}
+                    {{ predicted_pct <= min_brightness_pct }}
               sequence:
                 - variables:
                     current_pct: >
                       {% set cur_br = state_attr(lights[0], 'brightness') | default((max_brightness_pct * 2.55) | int(255)) | float(255) %}
                       {{ (cur_br / 2.55) | round(0) }}
-                    # Рассчитываем новое значение, но гарантируем, что оно не опустится ниже min_brightness_pct
                     new_pct: >
                       {% set val = current_pct - brightness_step_pct %}
                       {{ [val, min_brightness_pct] | max }}
@@ -432,14 +423,12 @@ action:
             value_template: "{{ trigger.id == 'brightness_stop' }}"
         sequence: []
 
-      # --- Short press → (Color Cycle +1) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'arrow_right_click' }}"
         sequence:
           - variables:
               current_index: "{{ states(color_index_helper) | int(0) }}"
-              # OPTIMIZATION: Dynamic cycle based on list length
               new_index: >
                 {% if current_index >= (color_list_len - 1) %}
                   {{ 0 }} 
@@ -457,20 +446,17 @@ action:
             data: >
               {% set color_data = color_list[new_index] %}
               {% set light_data = {} %}
-              {# We only support rgb_color now, since we use the color_rgb selector #}
               {% if color_data.rgb_color is defined %}
                 {% set light_data = light_data | combine({'rgb_color': color_data.rgb_color}) %}
               {% endif %}
               {{ light_data }}
 
-      # --- Short press ← (Color Cycle -1) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'arrow_left_click' }}"
         sequence:
           - variables:
               current_index: "{{ states(color_index_helper) | int(0) }}"
-              # OPTIMIZATION: Dynamic cycle based on list length
               new_index: >
                 {% if current_index == 0 %}
                   {{ color_list_len - 1 }} 
@@ -488,13 +474,11 @@ action:
             data: >
               {% set color_data = color_list[new_index] %}
               {% set light_data = {} %}
-              {# We only support rgb_color now, since we use the color_rgb selector #}
               {% if color_data.rgb_color is defined %}
                 {% set light_data = light_data | combine({'rgb_color': color_data.rgb_color}) %}
               {% endif %}
               {{ light_data }}
 
-      # --- Hold ← (Cooler / Increase Kelvin) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'arrow_left_hold' }}"
@@ -513,7 +497,6 @@ action:
               until:
                 - condition: trigger
                   id: arrow_left_release
-                # OPTIMIZATION: Stop if max (coolest) temp is reached
                 - condition: template
                   value_template: >
                     {% set cur_temp = state_attr(lights[0], 'color_temp_kelvin') | int(color_temp_min_kelvin) %}
@@ -533,7 +516,6 @@ action:
                     milliseconds: "{{ color_temp_delay }}"
           - sequence: !input arrow_left_hold
 
-      # --- Hold → (Warmer / Decrease Kelvin) ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'arrow_right_hold' }}"
@@ -552,7 +534,6 @@ action:
               until:
                 - condition: trigger
                   id: arrow_right_release
-                # OPTIMIZATION: Stop if min (warmest) temp is reached
                 - condition: template
                   value_template: >
                     {% set cur_temp = state_attr(lights[0], 'color_temp_kelvin') | int(color_temp_max_kelvin) %}
@@ -568,6 +549,3 @@ action:
                     entity_id: "{{ lights }}"
                   data:
                     color_temp_kelvin: "{{ new_temp | int }}"
-                - delay:
-                    milliseconds: "{{ color_temp_delay }}"
-          - sequence: !input arrow_right_hold
