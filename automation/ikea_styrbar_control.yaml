@@ -212,7 +212,7 @@ blueprint:
           max: 1000
           step: 10
           mode: slider
-      default: 70
+      default: 50 # <-- CHANGED from 70
 
     color_temp_step_kelvin_input:
       name: Color Temperature step (Kelvin)
@@ -223,7 +223,7 @@ blueprint:
           max: 500
           step: 10
           mode: slider
-      default: 250
+      default: 300 # <-- CHANGED from 250
 
 mode: restart
 
@@ -327,7 +327,7 @@ action:
         - rgb_color: !input color_5
         - rgb_color: !input color_6
         - rgb_color: !input color_7
-        - rgb_color: !input color_8
+        - rgb_auto: !input color_8
       color_list_len: "{{ color_list | count }}"
       color_index_helper: !input color_cycle_index
 
@@ -497,16 +497,7 @@ action:
           - condition: template
             value_template: "{{ trigger.id == 'arrow_left_hold' }}"
         sequence:
-          - if:
-              - condition: template
-                value_template: >
-                  {{ lights | count > 0 and state_attr(lights[0], 'color_mode') in ['hs', 'xy'] }}
-            then:
-              - service: light.turn_on
-                target:
-                  entity_id: "{{ lights }}"
-                data:
-                  color_mode: color_temp
+          # --- REMOVED IF BLOCK for color_mode check to eliminate delay ---
           - repeat:
               until:
                 - condition: trigger
@@ -536,16 +527,7 @@ action:
           - condition: template
             value_template: "{{ trigger.id == 'arrow_right_hold' }}"
         sequence:
-          - if:
-              - condition: template
-                value_template: >
-                  {{ lights | count > 0 and state_attr(lights[0], 'color_mode') in ['hs', 'xy'] }}
-            then:
-              - service: light.turn_on
-                target:
-                  entity_id: "{{ lights }}"
-                data:
-                  color_mode: color_temp
+          # --- REMOVED IF BLOCK for color_mode check to eliminate delay ---
           - repeat:
               until:
                 - condition: trigger
