@@ -4,7 +4,7 @@ blueprint:
     Advanced IKEA Styrbar control via Zigbee2MQTT.
     9-color cycle, smooth dimming and color temperature, dual light group switching via double-click.
   domain: automation
-  source_url: https://github.com/Gemeur/Home-assistant/blob/main/automation/ikea_styrbar_control.yaml
+  source_url: https://github.com/Gemeur/Home-assistant/blob/main/automation/ikea_styrbar_control_v2.yaml
   input:
 
     switch_remote:
