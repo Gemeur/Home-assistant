@@ -1,0 +1,763 @@
+blueprint:
+  name: 'IKEA Styrbar Control by Gemeur v2'
+  description: >
+    Advanced IKEA Styrbar control via Zigbee2MQTT.
+    9-color cycle, smooth dimming and color temperature, dual light group switching via double-click.
+  domain: automation
+  source_url: https://github.com/Gemeur/Home-assistant/blob/main/automation/ikea_styrbar_control.yaml
+  input:
+
+    switch_remote:
+      name: Styrbar Remote
+      description: Select your IKEA Styrbar device.
+      selector:
+        device:
+          integration: mqtt
+          manufacturer: IKEA
+          model: STYRBAR remote control
+          multiple: false
+
+    targets:
+      name: Group 1
+      description: Primary lights or switches. Multiple entities can be selected.
+      selector:
+        entity:
+          filter:
+            - domain:
+                - light
+                - switch
+          multiple: true
+          reorder: false
+
+    targets_group_2:
+      name: Group 2 (optional)
+      description: >
+        Double-click an arrow to switch control between Group 1 and Group 2.
+        Leave empty to disable group switching.
+      default: []
+      selector:
+        entity:
+          filter:
+            - domain:
+                - light
+                - switch
+          multiple: true
+          reorder: false
+
+    active_group_index:
+      name: Active Group Helper
+      description: "Type: number. Range: 0–1, step 1. Stores the currently active group index."
+      selector:
+        entity:
+          multiple: false
+          filter:
+            - domain: input_number
+
+    color_cycle_index:
+      name: Color Cycle Index Helper
+      description: "Type: number. Range: 0–8, step 1. Stores the current position in the color cycle."
+      selector:
+        entity:
+          multiple: false
+          filter:
+            - domain: input_number
+
+    click_pending_helper:
+      name: Click Pending Helper
+      description: "Type: toggle (input_boolean). Used to detect double-click on arrow buttons."
+      selector:
+        entity:
+          multiple: false
+          filter:
+            - domain: input_boolean
+
+    color_1:
+      name: "Color 1 (default: yellow)"
+      default: [255, 255, 0]
+      selector:
+        color_rgb: {}
+
+    color_2:
+      name: "Color 2 (default: orange)"
+      default: [255, 165, 0]
+      selector:
+        color_rgb: {}
+
+    color_3:
+      name: "Color 3 (default: red)"
+      default: [255, 0, 0]
+      selector:
+        color_rgb: {}
+
+    color_4:
+      name: "Color 4 (default: pink)"
+      default: [255, 0, 123]
+      selector:
+        color_rgb: {}
+
+    color_5:
+      name: "Color 5 (default: purple)"
+      default: [153, 0, 255]
+      selector:
+        color_rgb: {}
+
+    color_6:
+      name: "Color 6 (default: blue)"
+      default: [0, 30, 255]
+      selector:
+        color_rgb: {}
+
+    color_7:
+      name: "Color 7 (default: teal)"
+      default: [0, 85, 128]
+      selector:
+        color_rgb: {}
+
+    color_8:
+      name: "Color 8 (default: green)"
+      default: [0, 255, 42]
+      selector:
+        color_rgb: {}
+
+    min_color_temp_kelvin:
+      name: Minimum Color Temperature (warm white)
+      description: "Hold left arrow → warmer. Default: 2000K. E.g. 2000K = candle, 3000K = incandescent."
+      default: 2000
+      selector:
+        number:
+          min: 1000.0
+          max: 6500.0
+          step: 100.0
+          unit_of_measurement: K
+          mode: slider
+
+    max_color_temp_kelvin:
+      name: Maximum Color Temperature (cool white)
+      description: "Hold right arrow → cooler. Default: 4700K. E.g. 4000K = neutral, 6500K = daylight."
+      default: 4700
+      selector:
+        number:
+          min: 1000.0
+          max: 6500.0
+          step: 100.0
+          unit_of_measurement: K
+          mode: slider
+
+    color_temp_step_kelvin_input:
+      name: Color Temperature Step
+      description: "Kelvin change per iteration while holding. Smaller = smoother. Default: 300K."
+      default: 300
+      selector:
+        number:
+          min: 10.0
+          max: 500.0
+          step: 10.0
+          unit_of_measurement: K
+          mode: slider
+
+    color_temp_delay_input:
+      name: Color Temperature Step Delay
+      description: "Interval between temperature commands. Smaller = faster. Default: 50ms."
+      default: 50
+      selector:
+        number:
+          min: 20.0
+          max: 200.0
+          step: 10.0
+          unit_of_measurement: ms
+          mode: slider
+
+    min_brightness_pct:
+      name: Minimum Brightness
+      description: "Lower limit when dimming down. Default: 1%."
+      default: 1
+      selector:
+        number:
+          min: 1.0
+          max: 100.0
+          step: 1.0
+          unit_of_measurement: "%"
+          mode: slider
+
+    max_brightness_pct:
+      name: Maximum Brightness
+      description: "Upper limit when dimming up. Default: 100%."
+      default: 100
+      selector:
+        number:
+          min: 1.0
+          max: 100.0
+          step: 1.0
+          unit_of_measurement: "%"
+          mode: slider
+
+    brightness_step_pct:
+      name: Brightness Step
+      description: "Brightness change per iteration. Smaller = smoother. Default: 20%."
+      default: 20
+      selector:
+        number:
+          min: 1.0
+          max: 100.0
+          step: 1.0
+          unit_of_measurement: "%"
+          mode: slider
+
+    repeat_delay:
+      name: Brightness Step Delay
+      description: "Interval between brightness commands. Smaller = faster. Default: 50ms."
+      default: 50
+      selector:
+        number:
+          min: 20.0
+          max: 200.0
+          step: 10.0
+          unit_of_measurement: ms
+          mode: slider
+
+    double_click_timeout_ms:
+      name: Double-Click Window
+      description: >
+        How long to wait for a second arrow click. Single click changes color after this delay,
+        double click switches the active group. Default: 400ms.
+      default: 400
+      selector:
+        number:
+          min: 200.0
+          max: 800.0
+          step: 50.0
+          unit_of_measurement: ms
+          mode: slider
+
+    blink_duration_ms:
+      name: Group Switch Blink
+      description: "Duration of the confirmation blink when switching groups. Default: Fast (100ms)."
+      default: "100"
+      selector:
+        select:
+          options:
+            - label: Disabled
+              value: "0"
+            - label: Fast (100ms)
+              value: "100"
+            - label: Normal (400ms)
+              value: "400"
+            - label: Slow (800ms)
+              value: "800" 
+
+mode: restart
+
+trigger:
+  - id: 'on'
+    platform: device
+    device_id: !input switch_remote
+    domain: mqtt
+    type: action
+    subtype: 'on'
+  - id: 'off'
+    platform: device
+    device_id: !input switch_remote
+    domain: mqtt
+    type: action
+    subtype: 'off'
+  - id: brightness_move_up
+    platform: device
+    device_id: !input switch_remote
+    domain: mqtt
+    type: action
+    subtype: brightness_move_up
+  - id: brightness_move_down
+    platform: device
+    device_id: !input switch_remote
+    domain: mqtt
+    type: action
+    subtype: brightness_move_down
+  - id: brightness_stop
+    platform: device
+    device_id: !input switch_remote
+    domain: mqtt
+    type: action
+    subtype: brightness_stop
+  - id: arrow_left_click
+    platform: device
+    device_id: !input switch_remote
+    domain: mqtt
+    type: action
+    subtype: arrow_left_click
+  - id: arrow_right_click
+    platform: device
+    device_id: !input switch_remote
+    domain: mqtt
+    type: action
+    subtype: arrow_right_click
+  - id: arrow_left_hold
+    platform: device
+    device_id: !input switch_remote
+    domain: mqtt
+    type: action
+    subtype: arrow_left_hold
+  - id: arrow_left_release
+    platform: device
+    device_id: !input switch_remote
+    domain: mqtt
+    type: action
+    subtype: arrow_left_release
+  - id: arrow_right_hold
+    platform: device
+    device_id: !input switch_remote
+    domain: mqtt
+    type: action
+    subtype: arrow_right_hold
+  - id: arrow_right_release
+    platform: device
+    device_id: !input switch_remote
+    domain: mqtt
+    type: action
+    subtype: arrow_right_release
+
+action:
+  - variables:
+      target_entities: !input targets
+      target_entities_group_2: !input targets_group_2
+      active_group_index: !input active_group_index
+      repeat_delay: !input repeat_delay
+      brightness_step_pct: !input brightness_step_pct
+      min_brightness_pct: !input min_brightness_pct
+      max_brightness_pct: !input max_brightness_pct
+      color_temp_delay: !input color_temp_delay_input
+      color_temp_step_kelvin: !input color_temp_step_kelvin_input
+      color_temp_min_kelvin: !input min_color_temp_kelvin
+      color_temp_max_kelvin: !input max_color_temp_kelvin
+      double_click_timeout_ms: !input double_click_timeout_ms
+      color_list:
+        - rgb_color: [255, 255, 255]  # Color 0: hardcoded, always resets to color_temp
+        - rgb_color: !input color_1
+        - rgb_color: !input color_2
+        - rgb_color: !input color_3
+        - rgb_color: !input color_4
+        - rgb_color: !input color_5
+        - rgb_color: !input color_6
+        - rgb_color: !input color_7
+        - rgb_color: !input color_8
+      color_list_len: '{{ color_list | count }}'
+      color_index_helper: !input color_cycle_index
+      click_pending_helper: !input click_pending_helper
+      blink_duration_ms: !input blink_duration_ms
+      # Determine which group is active
+      use_group_2: >
+        {{ states(active_group_index) | int(0) == 1
+           and target_entities_group_2 | count > 0 }}
+      # All entities for active group
+      active_entities: >
+        {{ target_entities_group_2 if use_group_2 else target_entities }}
+      # Only lights from active group
+      active_lights: >
+        {{ expand(active_entities)
+           | map(attribute='entity_id')
+           | select('match', '^light\\.')
+           | list }}
+      # Only switches from active group
+      active_switches: >
+        {{ expand(active_entities)
+           | map(attribute='entity_id')
+           | select('match', '^switch\\.')
+           | list }}
+
+  - choose:
+
+      # ── ON ──────────────────────────────────────────────────────────────────
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'on' }}"
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ active_lights | count > 0 }}"
+            then:
+              - service: light.turn_on
+                target:
+                  entity_id: "{{ active_lights }}"
+                data:
+                  brightness_pct: "{{ max_brightness_pct }}"
+            else:
+              - service: switch.turn_on
+                target:
+                  entity_id: "{{ active_switches }}"
+
+      # ── OFF ─────────────────────────────────────────────────────────────────
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'off' }}"
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ active_lights | count > 0 }}"
+            then:
+              - service: light.turn_off
+                target:
+                  entity_id: "{{ active_lights }}"
+            else:
+              - service: switch.turn_off
+                target:
+                  entity_id: "{{ active_switches }}"
+
+      # ── BRIGHTNESS UP ────────────────────────────────────────────────────────
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'brightness_move_up' }}"
+          - condition: template
+            value_template: "{{ active_lights | count > 0 }}"
+        sequence:
+          - repeat:
+              until:
+                - condition: template
+                  value_template: >
+                    {% set cur_pct = (state_attr(active_lights[0], 'brightness')
+                       | default(0) | float(0)) / 2.55 %}
+                    {{ cur_pct >= max_brightness_pct }}
+              sequence:
+                - variables:
+                    current_pct: >
+                      {% set cur_br = state_attr(active_lights[0], 'brightness')
+                         | default((min_brightness_pct * 2.55) | int(0)) | float(0) %}
+                      {{ (cur_br / 2.55) | round(0) }}
+                    new_pct: >
+                      {% set val = current_pct + brightness_step_pct %}
+                      {{ [val, max_brightness_pct] | min }}
+                - service: light.turn_on
+                  target:
+                    entity_id: "{{ active_lights }}"
+                  data:
+                    brightness_pct: "{{ new_pct | int }}"
+                - delay:
+                    milliseconds: "{{ repeat_delay }}"
+
+      # ── BRIGHTNESS DOWN ──────────────────────────────────────────────────────
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'brightness_move_down' }}"
+          - condition: template
+            value_template: "{{ active_lights | count > 0 }}"
+        sequence:
+          - repeat:
+              until:
+                - condition: template
+                  value_template: >
+                    {% set cur_pct = (state_attr(active_lights[0], 'brightness')
+                       | default(255) | float(255)) / 2.55 %}
+                    {{ cur_pct <= min_brightness_pct }}
+              sequence:
+                - variables:
+                    current_pct: >
+                      {% set cur_br = state_attr(active_lights[0], 'brightness')
+                         | default((max_brightness_pct * 2.55) | int(255)) | float(255) %}
+                      {{ (cur_br / 2.55) | round(0) }}
+                    new_pct: >
+                      {% set val = current_pct - brightness_step_pct %}
+                      {{ [val, min_brightness_pct] | max }}
+                - service: light.turn_on
+                  target:
+                    entity_id: "{{ active_lights }}"
+                  data:
+                    brightness_pct: "{{ new_pct | int }}"
+                - delay:
+                    milliseconds: "{{ repeat_delay }}"
+
+      # ── BRIGHTNESS STOP ──────────────────────────────────────────────────────
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'brightness_stop' }}"
+        sequence: []
+
+      # ── ARROW RIGHT CLICK ────────────────────────────────────────────────────
+      # First click   → set pending flag, wait for second click
+      # Second click  → flag is ON → switch active group + blink
+      # No second click → flag still ON after delay → advance color cycle
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'arrow_right_click' }}"
+        sequence:
+          - choose:
+              # ── Flag is ON: this is the second click → switch group ──────────
+              - conditions:
+                  - condition: state
+                    entity_id: !input click_pending_helper
+                    state: 'on'
+                sequence:
+                  - service: input_boolean.turn_off
+                    target:
+                      entity_id: !input click_pending_helper
+                  - service: input_number.set_value
+                    target:
+                      entity_id: "{{ active_group_index }}"
+                    data:
+                      value: >
+                        {% if states(active_group_index) | int(0) == 0
+                           and target_entities_group_2 | count > 0 %}
+                          1
+                        {% else %}
+                          0
+                        {% endif %}
+                  - variables:
+                      new_active_lights: >
+                        {% set new_grp = states(active_group_index) | int(0) %}
+                        {% if new_grp == 1 and target_entities_group_2 | count > 0 %}
+                          {{ expand(target_entities_group_2)
+                             | map(attribute='entity_id')
+                             | select('match', '^light\\.')
+                             | list }}
+                        {% else %}
+                          {{ expand(target_entities)
+                             | map(attribute='entity_id')
+                             | select('match', '^light\\.')
+                             | list }}
+                        {% endif %}
+                  - if:
+                      - condition: template
+                        value_template: >
+                          {{ new_active_lights | count > 0
+                             and blink_duration_ms | int > 0 }}
+                    then:
+                      - choose:
+                          # Light is ON → turn off briefly then restore
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ states(new_active_lights[0]) == 'on' }}"
+                            sequence:
+                              - service: light.turn_off
+                                target:
+                                  entity_id: "{{ new_active_lights }}"
+                              - delay:
+                                  milliseconds: "{{ blink_duration_ms | int }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ new_active_lights }}"
+                        # Light is OFF → turn on briefly then turn off
+                        default:
+                          - service: light.turn_on
+                            target:
+                              entity_id: "{{ new_active_lights }}"
+                          - delay:
+                              milliseconds: "{{ blink_duration_ms | int }}"
+                          - service: light.turn_off
+                            target:
+                              entity_id: "{{ new_active_lights }}"
+
+            # ── Flag is OFF: first click → set flag, wait, change color ────────
+            default:
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: !input click_pending_helper
+              - delay:
+                  milliseconds: "{{ double_click_timeout_ms }}"
+              - service: input_boolean.turn_off
+                target:
+                  entity_id: !input click_pending_helper
+              - variables:
+                  current_index: "{{ states(color_index_helper) | int(0) }}"
+                  new_index: >
+                    {% if current_index >= (color_list_len - 1) %}
+                      0
+                    {% else %}
+                      {{ current_index + 1 }}
+                    {% endif %}
+              - service: input_number.set_value
+                data:
+                  value: "{{ new_index }}"
+                target:
+                  entity_id: "{{ color_index_helper }}"
+              - choose:
+                  # Color 0 → reset to color_temp mode (midpoint)
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ new_index | int == 0 }}"
+                    sequence:
+                      - service: light.turn_on
+                        target:
+                          entity_id: "{{ active_lights }}"
+                        data:
+                          color_temp_kelvin: >
+                            {{ ((color_temp_min_kelvin + color_temp_max_kelvin) / 2) | int }}
+                default:
+                  - service: light.turn_on
+                    target:
+                      entity_id: "{{ active_lights }}"
+                    data:
+                      rgb_color: "{{ color_list[new_index].rgb_color }}"
+
+      # ── ARROW LEFT HOLD → color temp warmer (удержание = теплее) ─────────────
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'arrow_left_hold' }}"
+          - condition: template
+            value_template: "{{ active_lights | count > 0 }}"
+        sequence:
+          - repeat:
+              until:
+                - condition: template
+                  value_template: >
+                    {% set cur_temp = state_attr(active_lights[0], 'color_temp_kelvin')
+                       | int(color_temp_max_kelvin) %}
+                    {{ cur_temp <= color_temp_min_kelvin }}
+              sequence:
+                - variables:
+                    cur_temp: >
+                      {{ state_attr(active_lights[0], 'color_temp_kelvin')
+                         | int(color_temp_max_kelvin) }}
+                    new_temp: >
+                      {% set val = cur_temp - color_temp_step_kelvin %}
+                      {{ [val, color_temp_min_kelvin] | max }}
+                - service: light.turn_on
+                  target:
+                    entity_id: "{{ active_lights }}"
+                  data:
+                    color_temp_kelvin: "{{ new_temp | int }}"
+                - delay:
+                    milliseconds: "{{ color_temp_delay }}"
+
+      # ── ARROW RIGHT HOLD → color temp cooler (удержание = холоднее) ─────────
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'arrow_right_hold' }}"
+          - condition: template
+            value_template: "{{ active_lights | count > 0 }}"
+        sequence:
+          - repeat:
+              until:
+                - condition: template
+                  value_template: >
+                    {% set cur_temp = state_attr(active_lights[0], 'color_temp_kelvin')
+                       | int(color_temp_min_kelvin) %}
+                    {{ cur_temp >= color_temp_max_kelvin }}
+              sequence:
+                - variables:
+                    cur_temp: >
+                      {{ state_attr(active_lights[0], 'color_temp_kelvin')
+                         | int(color_temp_min_kelvin) }}
+                    new_temp: >
+                      {% set val = cur_temp + color_temp_step_kelvin %}
+                      {{ [val, color_temp_max_kelvin] | min }}
+                - service: light.turn_on
+                  target:
+                    entity_id: "{{ active_lights }}"
+                  data:
+                    color_temp_kelvin: "{{ new_temp | int }}"
+                - delay:
+                    milliseconds: "{{ color_temp_delay }}"
+
+      # ── ARROW LEFT CLICK ─────────────────────────────────────────────────────
+      # First click   → set pending flag, wait for second click
+      # Second click  → flag is ON → switch active group + blink
+      # No second click → flag still ON after delay → go back in color cycle
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'arrow_left_click' }}"
+        sequence:
+          - choose:
+              # ── Flag is ON: this is the second click → switch group ──────────
+              - conditions:
+                  - condition: state
+                    entity_id: !input click_pending_helper
+                    state: 'on'
+                sequence:
+                  - service: input_boolean.turn_off
+                    target:
+                      entity_id: !input click_pending_helper
+                  - service: input_number.set_value
+                    target:
+                      entity_id: "{{ active_group_index }}"
+                    data:
+                      value: >
+                        {% if states(active_group_index) | int(0) == 0
+                           and target_entities_group_2 | count > 0 %}
+                          1
+                        {% else %}
+                          0
+                        {% endif %}
+                  - variables:
+                      new_active_lights: >
+                        {% set new_grp = states(active_group_index) | int(0) %}
+                        {% if new_grp == 1 and target_entities_group_2 | count > 0 %}
+                          {{ expand(target_entities_group_2)
+                             | map(attribute='entity_id')
+                             | select('match', '^light\\.')
+                             | list }}
+                        {% else %}
+                          {{ expand(target_entities)
+                             | map(attribute='entity_id')
+                             | select('match', '^light\\.')
+                             | list }}
+                        {% endif %}
+                  - if:
+                      - condition: template
+                        value_template: >
+                          {{ new_active_lights | count > 0
+                             and blink_duration_ms | int > 0 }}
+                    then:
+                      - choose:
+                          # Light is ON → turn off briefly then restore
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ states(new_active_lights[0]) == 'on' }}"
+                            sequence:
+                              - service: light.turn_off
+                                target:
+                                  entity_id: "{{ new_active_lights }}"
+                              - delay:
+                                  milliseconds: "{{ blink_duration_ms | int }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ new_active_lights }}"
+                        # Light is OFF → turn on briefly then turn off
+                        default:
+                          - service: light.turn_on
+                            target:
+                              entity_id: "{{ new_active_lights }}"
+                          - delay:
+                              milliseconds: "{{ blink_duration_ms | int }}"
+                          - service: light.turn_off
+                            target:
+                              entity_id: "{{ new_active_lights }}"
+
+            # ── Flag is OFF: first click → set flag, wait, change color ────────
+            default:
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: !input click_pending_helper
+              - delay:
+                  milliseconds: "{{ double_click_timeout_ms }}"
+              - service: input_boolean.turn_off
+                target:
+                  entity_id: !input click_pending_helper
+              - variables:
+                  current_index: "{{ states(color_index_helper) | int(0) }}"
+                  new_index: >
+                    {% if current_index == 0 %}
+                      {{ color_list_len - 1 }}
+                    {% else %}
+                      {{ current_index - 1 }}
+                    {% endif %}
+              - service: input_number.set_value
+                data:
+                  value: "{{ new_index }}"
+                target:
+                  entity_id: "{{ color_index_helper }}"
+              - choose:
+                  # Color 0 → reset to color_temp mode (midpoint)
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ new_index | int == 0 }}"
+                    sequence:
+                      - service: light.turn_on
+                        target:
+                          entity_id: "{{ active_lights }}"
+                        data:
+                          color_temp_kelvin: >
+                            {{ ((color_temp_min_kelvin + color_temp_max_kelvin) / 2) | int }}
+                default:
+                  - service: light.turn_on
+                    target:
+                      entity_id: "{{ active_lights }}"
+                    data:
+                      rgb_color: "{{ color_list[new_index].rgb_color }}"
+
